@@ -290,6 +290,26 @@ final class SettingsPage extends MainView.Page {
         if (idle.equals(RECORDING)) return; // já está gravando
         button.setText(RECORDING);
         KeyAdapter listener = new KeyAdapter() {
+            boolean other; // outra tecla entrou desde que o modificador foi apertado
+
+            private void accept(String hotkey) {
+                try {
+                    br.arara.core.Hotkey.parse(hotkey);
+                } catch (IllegalArgumentException ex) {
+                    JOptionPane.showMessageDialog(button, "Não consegui usar essa tecla como atalho. Que tal tentar outra?", "Atalho",
+                            JOptionPane.INFORMATION_MESSAGE);
+                    return;
+                }
+                String tip = tip(hotkey);
+                if (tip != null && JOptionPane.showOptionDialog(button, tip, "Atalho", JOptionPane.DEFAULT_OPTION,
+                        JOptionPane.INFORMATION_MESSAGE, null, new String[] {"Usar mesmo assim", "Escolher outra"}, "Escolher outra") != 0) {
+                    return;
+                }
+                button.removeKeyListener(this);
+                button.setText(idle);
+                onHotkey.accept(hotkey);
+            }
+
             @Override
             public void keyPressed(KeyEvent e) {
                 e.consume();
@@ -297,16 +317,21 @@ final class SettingsPage extends MainView.Page {
                     button.transferFocus();
                     return;
                 }
+                if (e.getKeyCode() == KeyEvent.VK_ALT_GRAPH) other = false; // o AltGr manda um Ctrl falso antes
+                else other = true;
                 String hotkey = hotkey(e.getModifiersEx(), e.getKeyCode());
                 if (hotkey == null) return; // só modificador até agora
-                String problem = problem(hotkey);
-                if (problem != null) {
-                    JOptionPane.showMessageDialog(button, problem, "Atalho", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
-                button.removeKeyListener(this);
-                button.setText(idle);
-                onHotkey.accept(hotkey);
+                accept(hotkey);
+            }
+
+            /** Ctrl/Alt/Shift direito sozinho só vale ao soltar, para não atrapalhar quem quer Ctrl direito + tecla. */
+            @Override
+            public void keyReleased(KeyEvent e) {
+                e.consume();
+                String solo = other ? null : soloModifier(e.getKeyCode(), e.getKeyLocation());
+                if ((e.getModifiersEx() & (KeyEvent.CTRL_DOWN_MASK | KeyEvent.ALT_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK
+                        | KeyEvent.META_DOWN_MASK | KeyEvent.ALT_GRAPH_DOWN_MASK)) == 0) other = false;
+                if (solo != null) accept(solo);
             }
         };
         button.addKeyListener(listener);
@@ -319,6 +344,19 @@ final class SettingsPage extends MainView.Page {
             }
         });
         button.requestFocusInWindow();
+    }
+
+    /** "RCtrl", "RAlt" ou "RShift" para o modificador direito (AltGr conta como Alt direito); null nos demais. */
+    static String soloModifier(int keyCode, int location) {
+        boolean right = location == KeyEvent.KEY_LOCATION_RIGHT;
+        return switch (keyCode) {
+            case KeyEvent.VK_CONTROL -> right ? "RCtrl" : "Ctrl";
+            case KeyEvent.VK_SHIFT -> right ? "RShift" : "Shift";
+            case KeyEvent.VK_ALT -> right ? "RAlt" : "Alt";
+            case KeyEvent.VK_ALT_GRAPH -> "RAlt";
+            case KeyEvent.VK_META, KeyEvent.VK_WINDOWS -> "Win";
+            default -> null;
+        };
     }
 
     /** "Ctrl+Shift+Space" a partir da tecla apertada; null se só um modificador foi apertado. */
@@ -342,34 +380,54 @@ final class SettingsPage extends MainView.Page {
         else if ((keyCode >= KeyEvent.VK_A && keyCode <= KeyEvent.VK_Z) || (keyCode >= KeyEvent.VK_0 && keyCode <= KeyEvent.VK_9))
             sb.append((char) keyCode);
         else if (keyCode >= KeyEvent.VK_F1 && keyCode <= KeyEvent.VK_F12) sb.append('F').append(keyCode - KeyEvent.VK_F1 + 1);
-        else sb.append(KeyEvent.getKeyText(keyCode));
+        else if (keyCode >= KeyEvent.VK_F13 && keyCode <= KeyEvent.VK_F24) sb.append('F').append(keyCode - KeyEvent.VK_F13 + 13);
+        else if (keyCode == KeyEvent.VK_PAGE_UP) sb.append("PageUp");
+        else if (keyCode == KeyEvent.VK_PAGE_DOWN) sb.append("PageDown");
+        else if (keyCode == KeyEvent.VK_SCROLL_LOCK) sb.append("ScrollLock");
+        else if (keyCode == KeyEvent.VK_CAPS_LOCK) sb.append("CapsLock");
+        else sb.append(KeyEvent.getKeyText(keyCode).replace(" ", ""));
         return sb.toString();
     }
 
-    /** Motivo para recusar o atalho, ou null se está bom. */
-    static String problem(String hotkey) {
-        return problem(hotkey, Ui.MAC);
+    /** Teclas sem função própria: só o aviso geral de tecla única. */
+    private static final java.util.regex.Pattern SOLO_SAFE = java.util.regex.Pattern.compile(
+            "F([1-9]|1[0-9]|2[0-4])|Pause|ScrollLock|RCtrl|RAlt|RShift");
+
+    /** Aviso de tecla única (amarelo), ou null se o atalho é uma combinação. */
+    static String soloWarning(String hotkey) {
+        return hotkey.contains("+") ? null
+                : "Uma tecla só é mais rápida, mas pode disparar sem querer. A combinação Ctrl+Shift+Espaço é a mais segura.";
     }
 
-    static String problem(String hotkey, boolean mac) {
+    /** Dica gentil (nunca bloqueia) para o que mantém a função normal; null se é seguro. */
+    static String tip(String hotkey) {
+        return tip(hotkey, Ui.MAC);
+    }
+
+    static String tip(String hotkey, boolean mac) {
+        if (!hotkey.contains("+")) {
+            if (hotkey.startsWith("Mouse") || SOLO_SAFE.matcher(hotkey).matches()) return null;
+            String name = hotkey.equals("Space") ? "Espaço" : hotkey;
+            String what = hotkey.equals("Delete") ? "apagando" : hotkey.equals("CapsLock") ? "ligando as maiúsculas" : "funcionando normalmente";
+            return "Dica: a tecla " + name + " continua " + what + " enquanto for o atalho, e isso pode atrapalhar no dia a dia."
+                    + " Se preferir, F8 ou Ctrl direito funcionam bem sozinhos.";
+        }
         if (mac) {
             boolean cmd = hotkey.contains("Cmd+"), ctrl = hotkey.contains("Ctrl+"), opt = hotkey.contains("Option+");
             boolean shift = hotkey.contains("Shift+"), fKey = hotkey.matches(".*\\bF\\d+$");
             switch (hotkey) {
-                case "Cmd+Space", "Cmd+Option+Space" -> { return "Esse atalho é do Spotlight e do Finder. Escolha outro."; }
-                case "Ctrl+Space", "Ctrl+Option+Space" -> { return "Esse atalho troca a fonte de entrada do teclado. Escolha outro."; }
-                case "Cmd+Shift+Space" -> { return "Esse atalho é da Inteligência Visual do macOS. Escolha outro."; }
-                case "Cmd+Ctrl+Space" -> { return "Esse atalho abre os emojis e símbolos. Escolha outro."; }
+                case "Cmd+Space", "Cmd+Option+Space" -> { return "Dica: esse atalho também abre o Spotlight ou o Finder."; }
+                case "Ctrl+Space", "Ctrl+Option+Space" -> { return "Dica: esse atalho também troca a fonte de entrada do teclado."; }
+                case "Cmd+Shift+Space" -> { return "Dica: esse atalho também é da Inteligência Visual do macOS."; }
+                case "Cmd+Ctrl+Space" -> { return "Dica: esse atalho também abre os emojis e símbolos."; }
                 default -> { }
             }
-            if (opt && !cmd && !ctrl && !fKey) return "Evite Option sem Cmd ou Ctrl: no Mac isso digita símbolos.";
-            if (!cmd && !ctrl && !opt && !shift && !fKey) return "Use pelo menos um modificador (Cmd, Ctrl, Option ou Shift).";
+            if (opt && !cmd && !ctrl && !fKey) return "Dica: Option sem Cmd ou Ctrl pode digitar símbolos no Mac.";
+            if (!cmd && !ctrl && !opt && !shift && !fKey) return "Dica: sem modificador, a tecla também digita.";
             return null;
         }
         boolean ctrl = hotkey.contains("Ctrl+"), alt = hotkey.contains("Alt+"), shift = hotkey.contains("Shift+");
-        boolean fKey = hotkey.matches(".*\\bF\\d+$");
-        if (ctrl && alt && !shift) return "Evite só Ctrl+Alt: no teclado ABNT2 isso vira AltGr. Junte o Shift.";
-        if (!ctrl && !alt && !shift && !fKey) return "Use pelo menos um modificador (Ctrl, Alt ou Shift).";
+        if (ctrl && alt && !shift) return "Dica: Ctrl+Alt vira AltGr no teclado ABNT2. Juntar o Shift evita isso.";
         return null;
     }
 
