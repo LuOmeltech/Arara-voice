@@ -41,8 +41,10 @@ final class MainView extends JPanel implements DictationListener {
         void refresh() {}
     }
 
+    // Por índice da tela (os 4 primeiros são fixos; Reuniões, quando existe, é a 5ª tela e aparece depois do Histórico).
     private static final String[][] MENU = {
-            {"Início", "house"}, {"Histórico", "history"}, {"Dicionário", "book-open"}, {"Configurações", "settings-2"}};
+            {"Início", "house"}, {"Histórico", "history"}, {"Dicionário", "book-open"}, {"Configurações", "settings-2"},
+            {"Reuniões", "users"}};
 
     private final SettingsStore settings;
     private final Page[] pages;
@@ -59,14 +61,21 @@ final class MainView extends JPanel implements DictationListener {
     private DictationState last = DictationState.IDLE;
 
     MainView(DictationEngine engine, HistoryStore history, DictionaryStore dictionary, SettingsStore settings) {
+        this(engine, history, dictionary, settings, null);
+    }
+
+    /** @param meetings gravação de reuniões, ou null onde não existe (a tela some do menu) */
+    MainView(DictationEngine engine, HistoryStore history, DictionaryStore dictionary, SettingsStore settings,
+            br.arara.core.MeetingEngine meetings) {
         super(new BorderLayout());
         this.settings = settings;
         setBackground(Theme.BG);
-        pages = new Page[] {
+        Page[] fixed = {
                 new HomePage(engine, settings, () -> show(3), modelBadge),
                 new HistoryPage(history, this::refresh),
                 new DictionaryPage(dictionary, this::refresh),
                 new SettingsPage(settings, history, this::refresh)};
+        pages = meetings == null ? fixed : new Page[] {fixed[0], fixed[1], fixed[2], fixed[3], new MeetingsPage(meetings, this::refresh)};
 
         add(sidebar(), BorderLayout.WEST);
 
@@ -130,7 +139,7 @@ final class MainView extends JPanel implements DictationListener {
 
         JPanel menu = Ui.column(logo);
         ButtonGroup group = new ButtonGroup();
-        for (int i = 0; i < MENU.length; i++) {
+        for (int i : pages.length > 4 ? new int[] {0, 1, 4, 2, 3} : new int[] {0, 1, 2, 3}) {
             JToggleButton b = new JToggleButton(MENU[i][0]);
             b.setIcon(Ui.icon(MENU[i][1], 22, () -> b.isSelected() ? Theme.ACTIVE : Theme.TEXT));
             b.setIconTextGap(12);

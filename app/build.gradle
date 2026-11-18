@@ -69,20 +69,40 @@ tasks.register('macAppImage', Exec) {
     }
 }
 
+def macHelper = layout.buildDirectory.file('mac-helper/arara-mac')
+
+tasks.register('macHelper', Exec) {
+    description = 'Compila o arara-mac (áudio do sistema e calendário para as reuniões) com o swiftc do Xcode.'
+    def fonte = new File(instaladorDir, 'macos/arara-mac.swift')
+    inputs.file(fonte)
+    outputs.file(macHelper)
+    def arq = System.getProperty('os.arch') == 'aarch64' ? 'arm64' : 'x86_64'
+    doFirst { macHelper.get().asFile.parentFile.mkdirs() }
+    // macOS 13: o primeiro com áudio no ScreenCaptureKit. Em Macs mais antigos o Arara abre, só sem reuniões.
+    commandLine 'xcrun', 'swiftc', '-O', '-swift-version', '5', '-target', "${arq}-apple-macos13.0",
+            '-o', macHelper.get().asFile, fonte
+}
+
 tasks.register('macApp', Exec) {
     group = 'distribution'
-    description = 'Gera app/build/jpackage-mac/Arara.app: versão e pedido do microfone no Info.plist, assinatura ad-hoc.'
-    dependsOn 'macAppImage'
+    description = 'Gera app/build/jpackage-mac/Arara.app: versão e pedidos de permissão no Info.plist, arara-mac, assinatura ad-hoc.'
+    dependsOn 'macAppImage', 'macHelper'
     def app = macDir.get().file('Arara.app').asFile
     commandLine 'sh', '-eu', '-c', '''
         p="$1/Contents/Info.plist"
         plutil -replace CFBundleShortVersionString -string "$2" "$p"
         plutil -replace CFBundleVersion -string "$2" "$p"
         plutil -replace NSMicrophoneUsageDescription -string "$3" "$p"
+        plutil -replace NSCalendarsFullAccessUsageDescription -string "$5" "$p"
+        plutil -replace NSCalendarsUsageDescription -string "$5" "$p"
+        cp "$4" "$1/Contents/MacOS/arara-mac"
+        codesign --force --sign - "$1/Contents/MacOS/arara-mac"
         codesign --force --deep --sign - "$1"
         codesign --verify --deep --strict "$1"
     ''', 'sh', app, versao,
-            'O Arara ouve o microfone só enquanto você dita, para transcrever no seu Mac. Nada sai do computador.'
+            'O Arara ouve o microfone só enquanto você dita ou grava uma reunião, para transcrever no seu Mac. Nada sai do computador.',
+            macHelper.get().asFile,
+            'O Arara lê o evento do calendário que está acontecendo para pôr o título e o nome dos participantes na transcrição da reunião. Nada sai do computador.'
 }
 
 tasks.register('dmg', Exec) {

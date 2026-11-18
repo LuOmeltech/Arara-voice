@@ -35,10 +35,26 @@ xattr -dr com.apple.quarantine /Applications/Arara.app
 | Microfone | ouvir enquanto você dita | no passo "Microfone" da primeira execução |
 | Acessibilidade | o atalho global (JNativeHook) e colar o texto com Cmd+V | no passo "Atalho" da primeira execução |
 | Monitoramento de Entrada | o atalho global, se o macOS pedir também | junto com a Acessibilidade |
+| Gravação de Tela e Áudio do Sistema | ouvir os outros participantes ao gravar uma reunião (o Arara não grava a tela) | na primeira vez que você clica em "Gravar reunião"; depois de permitir, reabra o app |
+| Calendários | pôr o título do evento e o nome dos participantes na transcrição da reunião | na primeira reunião gravada |
 
 Se negar sem querer: Ajustes do Sistema › Privacidade e Segurança › Microfone (ou Acessibilidade) e ligue o
 Arara. O botão "Abrir Ajustes" do app abre o painel certo. Depois de uma atualização do app, pode ser preciso
 desligar e ligar o Arara de novo na lista (a assinatura ad-hoc muda a cada versão).
+
+## Reuniões
+
+Na tela **Reuniões**, "Gravar reunião" grava dois canais: o microfone (você) e o áudio do sistema (quem está na
+chamada), e transcreve cada fala no seu Mac assim que ela termina. Precisa do macOS 13 ou mais novo. Nenhum áudio é
+guardado: só o texto, em `reunioes/` na pasta de dados.
+
+- **Nomes:** o Arara lê o evento do calendário do macOS que está acontecendo (todas as contas ligadas ao app
+  Calendário: iCloud, Google, Exchange). O dono do calendário é o microfone. Numa reunião a dois, a outra pessoa é o
+  áudio do sistema. Com três ou mais pessoas, todas as vozes da chamada chegam no mesmo canal e ficam como "Outros"
+  (ou o nome que você escolher em "Quem é quem"): separar as vozes dentro da chamada ainda não existe.
+- **Use fone.** Sem fone o microfone ouve a caixa de som e a fala dos outros sai repetida no seu nome.
+- O áudio do sistema e o calendário são feitos pelo `arara-mac` (fonte em `instalador/macos/arara-mac.swift`), que vai
+  dentro do `Arara.app`.
 
 ## Atalho
 

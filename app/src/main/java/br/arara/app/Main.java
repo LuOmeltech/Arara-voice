@@ -135,7 +135,7 @@ public final class Main {
             ModelDownload download = new ModelDownload(core != null ? core::prepareModel : firstRun ? Main::fakeDownload : p -> {});
             Runnable[] onIcon = {() -> {}};
             settings = watch(settings, download::start, onIcon);
-            MainView view = new MainView(engine, history, dictionary, settings);
+            MainView view = new MainView(engine, history, dictionary, settings, core != null ? core.meetings() : null);
             download.addListener(() -> modelStatus(view, download.phase, download.fraction()));
             RecordingPopup popup = new RecordingPopup(settings);
             engine.addListener(Ui.onEdt(view));

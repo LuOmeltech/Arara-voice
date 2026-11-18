@@ -67,6 +67,7 @@ public final class AraraCore implements AutoCloseable {
     private final Transcriber preview; // null: sem prévia
     private final DefaultDictationEngine engine;
     private GlobalHotkey hotkey; // null no macOS enquanto o Arara não tem permissão de Acessibilidade
+    private MeetingEngine meetings; // null fora do macOS
 
     private AraraCore(HistoryStore history, DictionaryStore dictionary, SettingsStore settings,
             Transcriber transcriber, Transcriber preview, DefaultDictationEngine engine, GlobalHotkey hotkey) {
@@ -163,8 +164,27 @@ public final class AraraCore implements AutoCloseable {
             }
         }
         AraraCore core = new AraraCore(history, dictionary, settings, transcriber, preview, engine, hotkey);
+        if (MAC) core.meetings = meetings(dataDir, dictionary, settings, transcriber);
         core.notice = notice;
         return core;
+    }
+
+    /** Reuniões só no macOS: microfone + áudio do sistema e calendário pelo arara-mac. */
+    private static MeetingEngine meetings(Path dataDir, DictionaryStore dictionary, SettingsStore settings, Transcriber transcriber) {
+        Path helper = MacHelper.path();
+        MacHelper.SystemAudio system = new MacHelper.SystemAudio(helper);
+        java.util.Map<String, DefaultDictationEngine.AudioSource> sources = new java.util.LinkedHashMap<>();
+        sources.put(MeetingEngine.EU, new Microphone(() -> settings.load().microphone()));
+        sources.put(MeetingEngine.OUTROS, system);
+        MeetingEngine m = new MeetingEngine(new MeetingStore(dataDir.resolve("reunioes")), dictionary, transcriber, sources,
+                () -> MacHelper.agenda(helper), System::nanoTime);
+        system.onFail = m::sourceFailed;
+        return m;
+    }
+
+    /** Gravação de reuniões, ou null onde não existe (por enquanto só no macOS). */
+    public MeetingEngine meetings() {
+        return meetings;
     }
 
     /** A GPU está valendo nestas configurações (Mac). */
@@ -223,6 +243,7 @@ public final class AraraCore implements AutoCloseable {
     @Override
     public synchronized void close() {
         if (hotkey != null) hotkey.close();
+        if (meetings != null) meetings.close();
         engine.close();
         if (transcriber instanceof WhisperTranscriber w) w.close(); // espera a transcrição em andamento
         if (preview instanceof WhisperTranscriber.Preview p) p.close();
